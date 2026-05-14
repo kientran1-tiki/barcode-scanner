@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Barcode Scanner</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.20.0/zxing.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      font-family: 'DM Mono', 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+
+    /* HOME SCREEN */
+    #home {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .logo {
+      font-size: 48px;
+      margin-bottom: 4px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .subtitle {
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      text-align: center;
+      letter-spacing: 0.03em;
+    }
+
+    #startBtn {
+      margin-top: 12px;
+      padding: 14px 40px;
+      background: #00ff88;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      font-family: inherit;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+
+    #startBtn:active { transform: scale(0.97); opacity: 0.85; }
+
+    .history-wrap {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .history-label {
+      color: rgba(255,255,255,0.3);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .history-item {
+      background: #161616;
+      border: 1px solid #252525;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .history-text {
+      font-size: 13px;
+      word-break: break-all;
+      flex: 1;
+    }
+
+    .history-time {
+      color: rgba(255,255,255,0.25);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    /* SCANNER SCREEN */
+    #scanner {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #scanner.active { display: flex; }
+
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.8) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Scan frame */
+    .frame-wrap {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .frame {
+      width: 300px;
+      height: 110px;
+      position: relative;
+    }
+
+    .corner {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+    }
+    .c-tl { top:0; left:0;  border-top: 3px solid #00ff88; border-left: 3px solid #00ff88; }
+    .c-tr { top:0; right:0; border-top: 3px solid #00ff88; border-right: 3px solid #00ff88; }
+    .c-bl { bottom:0; left:0;  border-bottom: 3px solid #00ff88; border-left: 3px solid #00ff88; }
+    .c-br { bottom:0; right:0; border-bottom: 3px solid #00ff88; border-right: 3px solid #00ff88; }
+
+    .scan-line {
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #00ff88, transparent);
+      box-shadow: 0 0 10px #00ff88;
+      animation: scanMove 2s ease-in-out infinite;
+    }
+
+    @keyframes scanMove {
+      0%   { top: 0; }
+      50%  { top: calc(100% - 2px); }
+      100% { top: 0; }
+    }
+
+    .status-text {
+      color: rgba(255,255,255,0.6);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+    }
+
+    /* Top bar */
+    .top-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: env(safe-area-inset-top, 16px) 16px 16px;
+      padding-top: max(env(safe-area-inset-top), 16px);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.75), transparent);
+      z-index: 3;
+    }
+
+    #backBtn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .scanner-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      flex: 1;
+    }
+
+    #cameraButtons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .cam-btn {
+      padding: 5px 11px;
+      border-radius: 20px;
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .cam-btn.active  { background: #00ff88; color: #000; }
+    .cam-btn.inactive { background: rgba(255,255,255,0.15); color: #fff; }
+
+    /* Bottom bar */
+    .bottom-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 20px 20px max(env(safe-area-inset-bottom), 32px);
+      background: linear-gradient(to top, rgba(0,0,0,0.88), transparent);
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #resultBadge {
+      display: none;
+      background: rgba(0,255,136,0.08);
+      border: 1px solid rgba(0,255,136,0.35);
+      border-radius: 12px;
+      padding: 10px 18px;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      width: 100%;
+      max-width: 360px;
+      animation: popIn 0.25s ease;
+    }
+
+    #resultBadge.visible { display: flex; }
+
+    @keyframes popIn {
+      from { opacity:0; transform: scale(0.95); }
+      to   { opacity:1; transform: scale(1); }
+    }
+
+    .result-label { color: #00ff88; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; }
+    #resultText   { color: #fff; font-size: 14px; font-weight: 600; word-break: break-all; text-align: center; }
+
+    .zoom-row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #zoomLabel { color: #fff; font-size: 13px; font-weight: 600; }
+
+    #zoomSlider {
+      width: 200px;
+      accent-color: #00ff88;
+      cursor: pointer;
+    }
+
+    #zoomHint { color: rgba(255,255,255,0.3); font-size: 10px; }
+
+    .hint-text {
+      color: rgba(255,255,255,0.35);
+      font-size: 11px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+
+<!-- HOME -->
+<div id="home">
+  <div class="logo">📦</div>
+  <div class="title">Barcode Scanner</div>
+  <div class="subtitle">Code 128 · QR · EAN · UPC · Data Matrix</div>
+  <button id="startBtn" onclick="openScanner()">Open Scanner</button>
+  <div class="history-wrap" id="historyWrap" style="display:none">
+    <div class="history-label">Recent Scans</div>
+    <div id="historyList"></div>
+  </div>
+</div>
+
+<!-- SCANNER -->
+<div id="scanner">
+  <video id="video" muted playsinline autoplay></video>
+  <div class="vignette"></div>
+
+  <div class="frame-wrap">
+    <div class="frame">
+      <span class="corner c-tl"></span>
+      <span class="corner c-tr"></span>
+      <span class="corner c-bl"></span>
+      <span class="corner c-br"></span>
+      <div class="scan-line"></div>
+    </div>
+    <p class="status-text" id="statusText">Initializing camera...</p>
+  </div>
+
+  <div class="top-bar">
+    <button id="backBtn" onclick="closeScanner()">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M15 19l-7-7 7-7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <span class="scanner-title">Barcode Scanner</span>
+    <div id="cameraButtons"></div>
+  </div>
+
+  <div class="bottom-bar">
+    <div id="resultBadge">
+      <span class="result-label">✅ DETECTED</span>
+      <span id="resultText"></span>
+    </div>
+    <div class="zoom-row">
+      <span id="zoomLabel">🔍 1x</span>
+      <input type="range" id="zoomSlider" min="1" max="4" step="0.5" value="1" oninput="handleZoom(this.value)" />
+      <span id="zoomHint" style="display:none">Zoom not supported on this device</span>
+    </div>
+    <p class="hint-text">Hold 15–25cm away · Good lighting · Keep steady</p>
+  </div>
+</div>
+
+<script>
+  let codeReader = null
+  let currentControls = null
+  let cameras = []
+  let selectedCameraId = null
+  let results = []
+
+  async function openScanner() {
+    document.getElementById('scanner').classList.add('active')
+    document.getElementById('statusText').textContent = 'Requesting camera...'
+
+    try {
+      const ZXing = window.ZXing
+      const hints = new Map()
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.DATA_MATRIX,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.UPC_E,
+      ])
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true)
+
+      codeReader = new ZXing.BrowserMultiFormatReader(hints)
+
+      cameras = await ZXing.BrowserMultiFormatReader.listVideoInputDevices()
+
+      const backCamera = cameras.find(d =>
+        d.label.toLowerCase().includes('back') ||
+        d.label.toLowerCase().includes('rear') ||
+        d.label.toLowerCase().includes('environment')
+      ) || cameras[cameras.length - 1]
+
+      selectedCameraId = backCamera?.deviceId
+      renderCameraButtons()
+      await startScanner(selectedCameraId)
+    } catch (err) {
+      document.getElementById('statusText').textContent = 'Camera access denied'
+      console.error(err)
+    }
+  }
+
+  function renderCameraButtons() {
+    const wrap = document.getElementById('cameraButtons')
+    wrap.innerHTML = ''
+    if (cameras.length <= 1) return
+
+    cameras.forEach((cam, i) => {
+      const btn = document.createElement('button')
+      btn.className = 'cam-btn ' + (cam.deviceId === selectedCameraId ? 'active' : 'inactive')
+      btn.textContent = getCameraLabel(cam, i)
+      btn.onclick = () => switchCamera(cam.deviceId)
+      wrap.appendChild(btn)
+    })
+  }
+
+  function getCameraLabel(cam, index) {
+    const label = cam.label.toLowerCase()
+    if (label.includes('ultra') || label.includes('wide')) return '📷 Wide'
+    if (label.includes('tele') || label.includes('zoom')) return '🔭 Tele'
+    if (label.includes('back') || label.includes('rear') || label.includes('environment')) return '📷 Back'
+    if (label.includes('front') || label.includes('user')) return '🤳 Front'
+    return `📷 Cam ${index + 1}`
+  }
+
+  async function startScanner(deviceId) {
+    if (!codeReader || !deviceId) return
+    stopScanner()
+
+    try {
+      const video = document.getElementById('video')
+      currentControls = await codeReader.decodeFromVideoDevice(
+        deviceId,
+        video,
+        (result, err) => {
+          if (result) {
+            const text = result.getText()
+            showResult(text)
+          }
+        }
+      )
+      setTimeout(() => applyZoom(document.getElementById('zoomSlider').value), 600)
+      document.getElementById('statusText').textContent = 'Align barcode in the frame'
+    } catch (err) {
+      document.getElementById('statusText').textContent = 'Failed to start camera'
+      console.error(err)
+    }
+  }
+
+  function stopScanner() {
+    try {
+      currentControls?.stop()
+      currentControls = null
+    } catch (e) {}
+  }
+
+  async function switchCamera(deviceId) {
+    selectedCameraId = deviceId
+    renderCameraButtons()
+    await startScanner(deviceId)
+  }
+
+  function closeScanner() {
+    stopScanner()
+    document.getElementById('scanner').classList.remove('active')
+    document.getElementById('resultBadge').classList.remove('visible')
+  }
+
+  function showResult(text) {
+    document.getElementById('resultText').textContent = text
+    document.getElementById('resultBadge').classList.add('visible')
+
+    // Add to history
+    results.unshift({ text, time: new Date().toLocaleTimeString() })
+    if (results.length > 10) results.pop()
+    renderHistory()
+  }
+
+  function renderHistory() {
+    const wrap = document.getElementById('historyWrap')
+    const list = document.getElementById('historyList')
+    wrap.style.display = results.length ? 'flex' : 'none'
+    list.innerHTML = results.map(r => `
+      <div class="history-item">
+        <span class="history-text">${r.text}</span>
+        <span class="history-time">${r.time}</span>
+      </div>
+    `).join('')
+  }
+
+  function handleZoom(value) {
+    document.getElementById('zoomLabel').textContent = `🔍 ${value}x`
+    applyZoom(value)
+  }
+
+  function applyZoom(value) {
+    try {
+      const video = document.getElementById('video')
+      const track = video?.srcObject?.getVideoTracks?.()[0]
+      const capabilities = track?.getCapabilities?.()
+      if (capabilities?.zoom) {
+        track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] })
+        document.getElementById('zoomHint').style.display = 'none'
+      } else {
+        document.getElementById('zoomHint').style.display = 'block'
+      }
+    } catch (e) {}
+  }
+</script>
+</body>
+</html>
